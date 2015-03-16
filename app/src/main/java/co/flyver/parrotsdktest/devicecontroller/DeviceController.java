@@ -1,21 +1,24 @@
 package co.flyver.parrotsdktest.devicecontroller;
 
 import android.content.Context;
+import android.os.Build;
 import android.util.Log;
 
+import com.parrot.arsdk.ardiscovery.ARDISCOVERY_ERROR_ENUM;
 import com.parrot.arsdk.ardiscovery.ARDiscoveryConnection;
-import com.parrot.arsdk.ardiscovery.ARDiscoveryDeviceBLEService;
+import com.parrot.arsdk.ardiscovery.ARDiscoveryDeviceNetService;
 import com.parrot.arsdk.ardiscovery.ARDiscoveryDeviceService;
 import com.parrot.arsdk.arnetwork.ARNetworkIOBufferParam;
 import com.parrot.arsdk.arnetwork.ARNetworkManager;
 import com.parrot.arsdk.arnetworkal.ARNETWORKAL_ERROR_ENUM;
-import com.parrot.arsdk.arnetworkal.ARNETWORKAL_FRAME_TYPE_ENUM;
 import com.parrot.arsdk.arnetworkal.ARNetworkALManager;
 import com.parrot.arsdk.arsal.ARSALPrint;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Semaphore;
 
 /**
  * Created by Petar Petrov on 3/6/15.
@@ -39,7 +42,9 @@ public class DeviceController {
 
     private ARNetworkALManager alManager;
     private ARNetworkManager netManager;
+    private ARDiscoveryConnection connection;
     private boolean mediaOpened;
+    private ARDroneNetworkConfig netConfig = new ARDroneNetworkConfig();
 
     private Thread rxThread;
     private Thread txThread;
@@ -48,91 +53,40 @@ public class DeviceController {
 
     private LooperThread looperThread;
 
-    private PositionCommandContainer currentPosition;
+    private PositionCommandContainer dronePosition;
     private ARDiscoveryDeviceService deviceService;
 
-    static {
-        c2dParams.clear();
-        c2dParams.add(new ARNetworkIOBufferParam(iobufferC2dNack,
-                ARNETWORKAL_FRAME_TYPE_ENUM.ARNETWORKAL_FRAME_TYPE_DATA,
-                20,
-                ARNetworkIOBufferParam.ARNETWORK_IOBUFFERPARAM_INFINITE_NUMBER,
-                ARNetworkIOBufferParam.ARNETWORK_IOBUFFERPARAM_INFINITE_NUMBER,
-                1,
-                ARNetworkIOBufferParam.ARNETWORK_IOBUFFERPARAM_DATACOPYMAXSIZE_USE_MAX,
-                true));
-        c2dParams.add(new ARNetworkIOBufferParam(iobufferC2dAck,
-                ARNETWORKAL_FRAME_TYPE_ENUM.ARNETWORKAL_FRAME_TYPE_DATA_WITH_ACK,
-                20,
-                500,
-                3,
-                20,
-                ARNetworkIOBufferParam.ARNETWORK_IOBUFFERPARAM_DATACOPYMAXSIZE_USE_MAX,
-                false));
-        c2dParams.add(new ARNetworkIOBufferParam(iobufferC2dEmergency,
-                ARNETWORKAL_FRAME_TYPE_ENUM.ARNETWORKAL_FRAME_TYPE_DATA_WITH_ACK,
-                1,
-                100,
-                ARNetworkIOBufferParam.ARNETWORK_IOBUFFERPARAM_INFINITE_NUMBER,
-                1,
-                ARNetworkIOBufferParam.ARNETWORK_IOBUFFERPARAM_DATACOPYMAXSIZE_USE_MAX,
-                false));
+    private int c2dPort;
+    private int d2cPort;
 
-        d2cParams.clear();
-        d2cParams.add(new ARNetworkIOBufferParam(iobufferD2cNavdata,
-                ARNETWORKAL_FRAME_TYPE_ENUM.ARNETWORKAL_FRAME_TYPE_DATA,
-                20,
-                ARNetworkIOBufferParam.ARNETWORK_IOBUFFERPARAM_INFINITE_NUMBER,
-                ARNetworkIOBufferParam.ARNETWORK_IOBUFFERPARAM_INFINITE_NUMBER,
-                20,
-                ARNetworkIOBufferParam.ARNETWORK_IOBUFFERPARAM_DATACOPYMAXSIZE_USE_MAX,
-                false));
-        d2cParams.add(new ARNetworkIOBufferParam(iobufferD2cEvents,
-                ARNETWORKAL_FRAME_TYPE_ENUM.ARNETWORKAL_FRAME_TYPE_DATA_WITH_ACK,
-                20,
-                500,
-                3,
-                20,
-                ARNetworkIOBufferParam.ARNETWORK_IOBUFFERPARAM_DATACOPYMAXSIZE_USE_MAX,
-                false));
-
-        commandsBuffers = new int[]{
-                iobufferD2cNavdata,
-                iobufferD2cEvents,
-        };
-
+    public PositionCommandContainer getDronePosition() {
+        return dronePosition;
     }
 
-    public PositionCommandContainer getCurrentPosition() {
-        return currentPosition;
+    public void setDronePosition(PositionCommandContainer dronePosition) {
+        this.dronePosition = dronePosition;
     }
 
-    public DeviceController (android.content.Context context, ARDiscoveryDeviceService service)
-    {
-        currentPosition = new PositionCommandContainer();
+    public DeviceController(android.content.Context context, ARDiscoveryDeviceService service) {
+        dronePosition = new PositionCommandContainer();
         deviceService = service;
         this.context = context;
         readerThreads = new ArrayList<>();
     }
 
-    public boolean start()
-    {
+    public boolean start() {
         Log.d(TAG, "start ...");
 
         boolean failed = false;
 
-//        registerARCommandsListener ();
-
         failed = startNetwork();
 
-        if (!failed)
-        {
+        if (!failed) {
             /* start the reader threads */
             startReadThreads();
         }
 
-        if (!failed)
-        {
+        if (!failed) {
                 /* start the looper thread */
             startLooperThread();
         }
@@ -140,8 +94,7 @@ public class DeviceController {
         return failed;
     }
 
-    private boolean startNetwork()
-    {
+    private boolean startNetwork() {
         ARNETWORKAL_ERROR_ENUM netALError;
         boolean failed = false;
         int pingDelay = 0; /* 0 means default, -1 means no ping */
@@ -150,73 +103,114 @@ public class DeviceController {
         alManager = new ARNetworkALManager();
 
 
-        /* setup ARNetworkAL for BLE */
+        /* setup ARNetworkAL for wifi */
+        Log.d(TAG, "alManager.ARDiscoveryDeviceNetService ");
 
-        ARDiscoveryDeviceBLEService bleDevice = (ARDiscoveryDeviceBLEService) deviceService.getDevice();
+        ARDiscoveryDeviceNetService netDevice = (ARDiscoveryDeviceNetService) deviceService.getDevice();
+        String discoveryIp = netDevice.getIp();
+        int discoveryPort = netDevice.getPort();
 
-        netALError = alManager.initBLENetwork(context, bleDevice.getBluetoothDevice(), 1, bleNotificationIDs);
+        initiateConnection(discoveryPort, discoveryIp);
 
-        if (netALError == ARNETWORKAL_ERROR_ENUM.ARNETWORKAL_OK)
-        {
+        Log.d(TAG, discoveryIp + " " + discoveryPort);
+
+        netALError = alManager.initWifiNetwork(discoveryIp, c2dPort, d2cPort, 5);
+
+        if (netALError == ARNETWORKAL_ERROR_ENUM.ARNETWORKAL_OK) {
             mediaOpened = true;
-            pingDelay = -1; /* Disable ping for BLE networks */
-        }
-        else
-        {
+        } else {
             ARSALPrint.e(TAG, "error occured: " + netALError.toString());
             failed = true;
         }
 
-        if (!failed)
-        {
-            /* Create the ARNetworkManager */
-            netManager = new ARNetworkManagerExtended(alManager, c2dParams.toArray(new ARNetworkIOBufferParam[c2dParams.size()]), d2cParams.toArray(new ARNetworkIOBufferParam[d2cParams.size()]), pingDelay);
+//        ARDiscoveryDeviceBLEService bleDevice = (ARDiscoveryDeviceBLEService) deviceService.getDevice();
+//
+//        netALError = alManager.initBLENetwork(context, bleDevice.getBluetoothDevice(), 1, bleNotificationIDs);
 
-            if (!netManager.isCorrectlyInitialized())
-            {
-                ARSALPrint.e (TAG, "new ARNetworkManager failed");
+        if (netALError == ARNETWORKAL_ERROR_ENUM.ARNETWORKAL_OK) {
+            mediaOpened = true;
+        pingDelay = 0; /* Disable ping for BLE networks */
+        } else {
+            ARSALPrint.e(TAG, "error occured: " + netALError.toString());
+            failed = true;
+        }
+
+        if (!failed) {
+            /* Create the ARNetworkManager */
+            netManager = new ARNetworkManagerExtended(alManager, netConfig.getC2dParams(), netConfig.getD2cParams(), pingDelay);
+
+            if (!netManager.isCorrectlyInitialized()) {
+                ARSALPrint.e(TAG, "new ARNetworkManager failed");
                 failed = true;
             }
         }
 
-        if (!failed)
-        {
+        if (!failed) {
             /* Create and start Tx and Rx threads */
-            rxThread = new Thread (netManager.m_receivingRunnable);
+            rxThread = new Thread(netManager.m_receivingRunnable);
             rxThread.start();
 
-            txThread = new Thread (netManager.m_sendingRunnable);
+            txThread = new Thread(netManager.m_sendingRunnable);
             txThread.start();
         }
-        Log.d(TAG, "network started: ".concat(String.valueOf(failed)));
+        Log.d(TAG, "network started: ".concat(String.valueOf(!failed)));
 
         return failed;
     }
 
-    private void startReadThreads()
-    {
+    private void startReadThreads() {
         /* Create the reader threads */
-        for (int bufferId : commandsBuffers)
-        {
+        for (int bufferId : netConfig.getCommandsIOBuffers()) {
             ReaderThread readerThread = new ReaderThread(bufferId, netManager);
             readerThreads.add(readerThread);
         }
 
         /* Mark all reader threads as started */
-        for (ReaderThread readerThread : readerThreads)
-        {
+        for (ReaderThread readerThread : readerThreads) {
             readerThread.start();
         }
         Log.d(TAG, "Reader threads started: ".concat(String.valueOf(readerThreads.size())));
     }
 
-    private void startLooperThread()
-    {
+    private void startLooperThread() {
         /* Create the looper thread */
         looperThread = new ControllerThread(this, netManager);
 
         /* Start the looper thread. */
         looperThread.start();
         Log.d(TAG, "Looper thread started");
+    }
+
+    private void initiateConnection(int discoveryPort, String discoveryIp) {
+        d2cPort = netConfig.getInboundPort();
+        connection = new ARDiscoveryConnection() {
+            @Override
+            protected String onSendJson() {
+                JSONObject jsonObject = new JSONObject();
+                try {
+                    jsonObject.put(ARDISCOVERY_CONNECTION_JSON_D2CPORT_KEY, d2cPort);
+                    jsonObject.put(ARDISCOVERY_CONNECTION_JSON_CONTROLLER_NAME_KEY, Build.MODEL);
+                    jsonObject.put(ARDISCOVERY_CONNECTION_JSON_CONTROLLER_TYPE_KEY, Build.DEVICE);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+                return jsonObject.toString();
+            }
+
+            @Override
+            protected ARDISCOVERY_ERROR_ENUM onReceiveJson(String dataRx, String ip) {
+                ARDISCOVERY_ERROR_ENUM error = ARDISCOVERY_ERROR_ENUM.ARDISCOVERY_OK;
+                Log.d(TAG, "JSON RECEIVED: ".concat(dataRx.concat(" from: ".concat(ip))));
+                try {
+                    JSONObject jsonObject = new JSONObject(dataRx);
+                    c2dPort = jsonObject.getInt(ARDISCOVERY_CONNECTION_JSON_C2DPORT_KEY);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                    error = ARDISCOVERY_ERROR_ENUM.ARDISCOVERY_ERROR;
+                }
+                return error;
+            }
+        };
+        connection.ControllerConnection(discoveryPort, discoveryIp);
     }
 }

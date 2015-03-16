@@ -1,5 +1,7 @@
 package co.flyver.parrotsdktest.devicecontroller;
 
+import android.util.Log;
+
 import com.parrot.arsdk.arcommands.ARCOMMANDS_DECODER_ERROR_ENUM;
 import com.parrot.arsdk.arcommands.ARCommand;
 import com.parrot.arsdk.arnetwork.ARNETWORK_ERROR_ENUM;
@@ -12,7 +14,7 @@ import com.parrot.arsdk.arsal.ARSALPrint;
 class ReaderThread extends LooperThread {
     private final String TAG = "ReaderThread";
     int bufferId;
-    ARCommand dataRecv = new ARCommand(128 * 1024);//TODO define
+    ARCommand dataRecv;
     ARNetworkManager netManager;
 
     public ReaderThread(int bufferId, ARNetworkManager manager) {
