@@ -67,6 +67,10 @@ public class DeviceController {
         this.dronePosition = dronePosition;
     }
 
+    public ARNetworkManager getNetManager() {
+        return netManager;
+    }
+
     public DeviceController(android.content.Context context, ARDiscoveryDeviceService service) {
         dronePosition = new PositionCommandContainer();
         deviceService = service;

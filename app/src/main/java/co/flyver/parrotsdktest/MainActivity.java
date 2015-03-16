@@ -15,6 +15,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 
+import com.parrot.arsdk.arcommands.ARCommand;
 import com.parrot.arsdk.ardiscovery.ARDiscoveryDeviceService;
 import com.parrot.arsdk.ardiscovery.ARDiscoveryService;
 import com.parrot.arsdk.ardiscovery.receivers.ARDiscoveryServicesDevicesListUpdatedReceiver;
@@ -148,10 +149,10 @@ public class MainActivity extends ActionBarActivity implements ARDiscoveryServic
                 Log.d(TAG, "Start pressed!");
                 PositionCommandContainer position = new PositionCommandContainer();
                 position.flag = 1;
-                position.gaz = -30;
-                position.pitch = 10;
-                position.roll = 10;
-                position.yaw = 10;
+                position.gaz = 50;
+                position.pitch = 50;
+                position.roll = 50;
+                position.yaw = 50;
                 position.psi = 0;
                 deviceController.setDronePosition(position);
             }
@@ -170,6 +171,30 @@ public class MainActivity extends ActionBarActivity implements ARDiscoveryServic
                 position.yaw = 0;
                 position.psi = 0;
                 deviceController.setDronePosition(position);
+            }
+        });
+
+        button = (Button) findViewById(R.id.button_takeoff);
+        button.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Log.d(TAG, "TAKEOFF PRESSED");
+                ARCommand cmd = new ARCommand();
+                cmd.setARDrone3PilotingTakeOff();
+                deviceController.getNetManager().sendData(DeviceController.iobufferC2dNack, cmd, null, true);
+                cmd.dispose();
+            }
+        });
+
+        button = (Button) findViewById(R.id.button_land);
+        button.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Log.d(TAG, "LAND PRESSED");
+                ARCommand cmd = new ARCommand();
+                cmd.setARDrone3PilotingLanding();
+                deviceController.getNetManager().sendData(DeviceController.iobufferC2dNack, cmd, null, true);
+                cmd.dispose();
             }
         });
     }
