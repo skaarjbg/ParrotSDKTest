@@ -26,6 +26,7 @@ import java.util.List;
 
 import co.flyver.parrotsdktest.devicecontroller.DeviceController;
 import co.flyver.parrotsdktest.devicecontroller.PositionCommandContainer;
+import co.flyver.parrotsdktest.devicecontroller.VideoThread;
 
 public class MainActivity extends ActionBarActivity implements ARDiscoveryServicesDevicesListUpdatedReceiverDelegate {
 
@@ -197,5 +198,8 @@ public class MainActivity extends ActionBarActivity implements ARDiscoveryServic
                 cmd.dispose();
             }
         });
+    }
+
+    public void startVideo() {
     }
 }

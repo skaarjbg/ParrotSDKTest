@@ -52,12 +52,16 @@ public class DeviceController {
     private List<ReaderThread> readerThreads;
 
     private LooperThread looperThread;
+    private VideoThread videoThread;
 
     private PositionCommandContainer dronePosition;
     private ARDiscoveryDeviceService deviceService;
 
     private int c2dPort;
     private int d2cPort;
+
+    private int videoFragmentSize;
+    private int videoFragmentNumber;
 
     public PositionCommandContainer getDronePosition() {
         return dronePosition;
@@ -94,6 +98,8 @@ public class DeviceController {
                 /* start the looper thread */
             startLooperThread();
         }
+
+        startVideo();
 
         return failed;
     }
@@ -208,6 +214,8 @@ public class DeviceController {
                 try {
                     JSONObject jsonObject = new JSONObject(dataRx);
                     c2dPort = jsonObject.getInt(ARDISCOVERY_CONNECTION_JSON_C2DPORT_KEY);
+                    videoFragmentSize = jsonObject.getInt(ARDISCOVERY_CONNECTION_JSON_ARSTREAM_FRAGMENT_SIZE_KEY);
+                    videoFragmentNumber = jsonObject.getInt(ARDISCOVERY_CONNECTION_JSON_ARSTREAM_FRAGMENT_MAXIMUM_NUMBER_KEY);
                 } catch (JSONException e) {
                     e.printStackTrace();
                     error = ARDISCOVERY_ERROR_ENUM.ARDISCOVERY_ERROR;
@@ -216,5 +224,10 @@ public class DeviceController {
             }
         };
         connection.ControllerConnection(discoveryPort, discoveryIp);
+    }
+
+    public void startVideo() {
+        videoThread = new VideoThread(netManager, netConfig, videoFragmentSize, videoFragmentNumber);
+        videoThread.start();
     }
 }
