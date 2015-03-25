@@ -11,20 +11,34 @@ import com.parrot.arsdk.arstream.ARStreamReaderListener;
 /**
  * Created by Petar Petrov on 3/17/15.
  */
-public class VideoThread extends LooperThread {
-    private static final String TAG = VideoThread.class.getSimpleName();
+public class VideoStreamReader {
+
+    public interface onFrameReceievedCallback {
+        public boolean run(ARNativeData data);
+    }
+
+    private static final String TAG = VideoStreamReader.class.getSimpleName();
     private ARStreamReader reader;
     private ARStreamReaderListener listener;
     private ARNetworkManager manager;
     private ARDroneNetworkConfig netConfig;
+    private onFrameReceievedCallback callback;
+    private int videoFragmentSize;
+    private int videoFragmentNumber;
+    private ARNativeData data;
 
-    private VideoThread() {
+    private VideoStreamReader() {
     }
 
-    public VideoThread(ARNetworkManager manager, ARDroneNetworkConfig netConfig, int videoFragmentSize, int videoFragmentNumber) {
+    public VideoStreamReader(ARNetworkManager manager, ARDroneNetworkConfig netConfig, int videoFragmentSize, int videoFragmentNumber) {
         this.manager = manager;
         this.netConfig = netConfig;
-        ARNativeData data = new ARNativeData(1024);
+        this.videoFragmentNumber = videoFragmentNumber;
+        this.videoFragmentSize = videoFragmentSize;
+        data = new ARNativeData(128 * 1024);
+    }
+
+    public void init() {
         listener = new ARStreamReaderListener() {
             @Override
             public ARNativeData didUpdateFrameStatus(ARSTREAM_READER_CAUSE_ENUM cause,
@@ -32,11 +46,11 @@ public class VideoThread extends LooperThread {
                                                      boolean isFlushFrame,
                                                      int nbSkippedFrames,
                                                      int newBufferCapacity) {
-                Log.d(TAG, currentFrame.toString());
+                callback.run(currentFrame);
                 return currentFrame;
             }
         };
-        netConfig.addStreamReaderIOBuffer(videoFragmentSize, videoFragmentNumber);
+//        netConfig.addStreamReaderIOBuffer(videoFragmentSize, videoFragmentNumber);
         reader = new ARStreamReader(manager,
                 netConfig.getVideoDataIOBuffer(),
                 netConfig.getVideoAckIOBuffer(),
@@ -47,16 +61,9 @@ public class VideoThread extends LooperThread {
 
         new Thread(reader.getDataRunnable()).run();
         new Thread(reader.getAckRunnable()).run();
-//        reader.getDataRunnable().run();
-//        reader.getAckRunnable().run();
     }
 
-    @Override
-    public void onStart() {
-        super.onStart();
-    }
-
-    @Override
-    public void onloop() {
+    public void setCallback(onFrameReceievedCallback callback) {
+        this.callback = callback;
     }
 }

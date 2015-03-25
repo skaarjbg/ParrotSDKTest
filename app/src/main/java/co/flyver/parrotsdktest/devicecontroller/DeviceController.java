@@ -4,14 +4,18 @@ import android.content.Context;
 import android.os.Build;
 import android.util.Log;
 
+import com.parrot.arsdk.arcommands.ARCommand;
 import com.parrot.arsdk.ardiscovery.ARDISCOVERY_ERROR_ENUM;
 import com.parrot.arsdk.ardiscovery.ARDiscoveryConnection;
 import com.parrot.arsdk.ardiscovery.ARDiscoveryDeviceNetService;
 import com.parrot.arsdk.ardiscovery.ARDiscoveryDeviceService;
+import com.parrot.arsdk.arnetwork.ARNETWORK_ERROR_ENUM;
 import com.parrot.arsdk.arnetwork.ARNetworkIOBufferParam;
 import com.parrot.arsdk.arnetwork.ARNetworkManager;
 import com.parrot.arsdk.arnetworkal.ARNETWORKAL_ERROR_ENUM;
+import com.parrot.arsdk.arnetworkal.ARNETWORKAL_FRAME_TYPE_ENUM;
 import com.parrot.arsdk.arnetworkal.ARNetworkALManager;
+import com.parrot.arsdk.arsal.ARNativeData;
 import com.parrot.arsdk.arsal.ARSALPrint;
 
 import org.json.JSONException;
@@ -52,7 +56,6 @@ public class DeviceController {
     private List<ReaderThread> readerThreads;
 
     private LooperThread looperThread;
-    private VideoThread videoThread;
 
     private PositionCommandContainer dronePosition;
     private ARDiscoveryDeviceService deviceService;
@@ -65,6 +68,18 @@ public class DeviceController {
 
     public PositionCommandContainer getDronePosition() {
         return dronePosition;
+    }
+
+    public int getVideoFragmentSize() {
+        return videoFragmentSize;
+    }
+
+    public int getVideoFragmentNumber() {
+        return videoFragmentNumber;
+    }
+
+    public ARDroneNetworkConfig getNetConfig() {
+        return netConfig;
     }
 
     public void setDronePosition(PositionCommandContainer dronePosition) {
@@ -99,7 +114,7 @@ public class DeviceController {
             startLooperThread();
         }
 
-        startVideo();
+        registerStream();
 
         return failed;
     }
@@ -216,6 +231,7 @@ public class DeviceController {
                     c2dPort = jsonObject.getInt(ARDISCOVERY_CONNECTION_JSON_C2DPORT_KEY);
                     videoFragmentSize = jsonObject.getInt(ARDISCOVERY_CONNECTION_JSON_ARSTREAM_FRAGMENT_SIZE_KEY);
                     videoFragmentNumber = jsonObject.getInt(ARDISCOVERY_CONNECTION_JSON_ARSTREAM_FRAGMENT_MAXIMUM_NUMBER_KEY);
+                    netConfig.addStreamReaderIOBuffer(videoFragmentSize, videoFragmentNumber);
                 } catch (JSONException e) {
                     e.printStackTrace();
                     error = ARDISCOVERY_ERROR_ENUM.ARDISCOVERY_ERROR;
@@ -226,8 +242,12 @@ public class DeviceController {
         connection.ControllerConnection(discoveryPort, discoveryIp);
     }
 
-    public void startVideo() {
-        videoThread = new VideoThread(netManager, netConfig, videoFragmentSize, videoFragmentNumber);
-        videoThread.start();
+    public void registerStream() {
+        ARNETWORK_ERROR_ENUM error_enum;
+        ARCommand cmd = new ARCommand();
+        cmd.setARDrone3MediaStreamingVideoEnable((byte) 1);
+        error_enum = netManager.sendData(DeviceController.iobufferC2dNack, cmd, null, true);
+        Log.d(TAG, "Video Stream Requested: ".concat(error_enum.toString()));
+        cmd.dispose();
     }
 }
