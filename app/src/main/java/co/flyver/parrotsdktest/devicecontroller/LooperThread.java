@@ -19,6 +19,9 @@ abstract class LooperThread extends Thread {
         onStart();
 
         while (this.isAlive) {
+            if(Thread.currentThread().isInterrupted()) {
+                return;
+            }
             onloop();
         }
         onStop();

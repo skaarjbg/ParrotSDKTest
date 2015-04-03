@@ -1,7 +1,5 @@
 package co.flyver.parrotsdktest.devicecontroller;
 
-import android.util.Log;
-
 import com.parrot.arsdk.arcommands.ARCOMMANDS_DECODER_ERROR_ENUM;
 import com.parrot.arsdk.arcommands.ARCommand;
 import com.parrot.arsdk.arnetwork.ARNETWORK_ERROR_ENUM;

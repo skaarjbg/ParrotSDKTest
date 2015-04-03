@@ -13,11 +13,19 @@ import com.parrot.arsdk.arsal.ARNativeData;
  * Created by Petar Petrov on 3/6/15.
  */
 class ARNetworkManagerExtended extends ARNetworkManager {
+    public interface Disconnected {
+        public void disconnected();
+    }
     public ARNetworkManagerExtended(ARNetworkALManager osSpecificManager, ARNetworkIOBufferParam[] inputParamArray, ARNetworkIOBufferParam[] outputParamArray, int timeBetweenPingsMs) {
         super(osSpecificManager, inputParamArray, outputParamArray, timeBetweenPingsMs);
     }
 
     private static final String TAG = "ARNetworkManagerExtend";
+    private Disconnected disconnectedCallback;
+
+    public void setDisconnectedCallback(Disconnected disconnectedCallback) {
+        this.disconnectedCallback = disconnectedCallback;
+    }
 
     @Override
     public ARNETWORK_MANAGER_CALLBACK_RETURN_ENUM onCallback(int ioBufferId, ARNativeData data, ARNETWORK_MANAGER_CALLBACK_STATUS_ENUM status, Object customData) {
@@ -33,6 +41,9 @@ class ARNetworkManagerExtended extends ARNetworkManager {
     @Override
     public void onDisconnect(ARNetworkALManager arNetworkALManager) {
         Log.d(TAG, "onDisconnect ...");
+        this.stop();
+        this.dispose();
+        this.disconnectedCallback.disconnected();
     }
 }
 

@@ -11,6 +11,8 @@ import com.parrot.arsdk.arsal.ARSALPrint;
 
 import java.util.Date;
 
+import co.flyver.parrotsdktest.devicecontroller.containers.PositionCommandContainer;
+
 /**
  * Created by Petar Petrov on 3/6/15.
  */

@@ -1,5 +1,6 @@
 package co.flyver.parrotsdktest.devicecontroller;
 
+import android.bluetooth.BluetoothClass;
 import android.content.Context;
 import android.os.Build;
 import android.util.Log;
@@ -13,9 +14,7 @@ import com.parrot.arsdk.arnetwork.ARNETWORK_ERROR_ENUM;
 import com.parrot.arsdk.arnetwork.ARNetworkIOBufferParam;
 import com.parrot.arsdk.arnetwork.ARNetworkManager;
 import com.parrot.arsdk.arnetworkal.ARNETWORKAL_ERROR_ENUM;
-import com.parrot.arsdk.arnetworkal.ARNETWORKAL_FRAME_TYPE_ENUM;
 import com.parrot.arsdk.arnetworkal.ARNetworkALManager;
-import com.parrot.arsdk.arsal.ARNativeData;
 import com.parrot.arsdk.arsal.ARSALPrint;
 
 import org.json.JSONException;
@@ -23,6 +22,9 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import co.flyver.parrotsdktest.devicecontroller.config.ARDroneNetworkConfig;
+import co.flyver.parrotsdktest.devicecontroller.containers.PositionCommandContainer;
 
 /**
  * Created by Petar Petrov on 3/6/15.
@@ -45,7 +47,7 @@ public class DeviceController {
     private Context context;
 
     private ARNetworkALManager alManager;
-    private ARNetworkManager netManager;
+    private ARNetworkManagerExtended netManager;
     private ARDiscoveryConnection connection;
     private boolean mediaOpened;
     private ARDroneNetworkConfig netConfig = new ARDroneNetworkConfig();
@@ -163,6 +165,12 @@ public class DeviceController {
         if (!failed) {
             /* Create the ARNetworkManager */
             netManager = new ARNetworkManagerExtended(alManager, netConfig.getC2dParams(), netConfig.getD2cParams(), pingDelay);
+            netManager.setDisconnectedCallback(new ARNetworkManagerExtended.Disconnected() {
+                @Override
+                public void disconnected() {
+                    stop();
+                }
+            });
 
             if (!netManager.isCorrectlyInitialized()) {
                 ARSALPrint.e(TAG, "new ARNetworkManager failed");
@@ -249,5 +257,20 @@ public class DeviceController {
         error_enum = netManager.sendData(DeviceController.iobufferC2dNack, cmd, null, true);
         Log.d(TAG, "Video Stream Requested: ".concat(error_enum.toString()));
         cmd.dispose();
+    }
+
+    public void stop() {
+        for(ReaderThread t : readerThreads) {
+           t.stopThread();
+        }
+        looperThread.stopThread();
+        alManager.closeWifiNetwork();
+        netManager.stop();
+        try {
+            netManager.finalize();
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+        }
+//        looperThread.interrupt();
     }
 }

@@ -92,11 +92,11 @@
     <orderEntry type="library" exported="" name="libjson" level="project" />
     <orderEntry type="library" exported="" name="libARSAL" level="project" />
     <orderEntry type="library" exported="" name="jmdns" level="project" />
-    <orderEntry type="library" exported="" name="libARNetwork" level="project" />
     <orderEntry type="library" exported="" name="libARNetworkAL" level="project" />
-    <orderEntry type="library" exported="" name="libARUpdater" level="project" />
-    <orderEntry type="library" exported="" name="libARCommands" level="project" />
+    <orderEntry type="library" exported="" name="libARNetwork" level="project" />
     <orderEntry type="library" exported="" name="libARDataTransfer" level="project" />
+    <orderEntry type="library" exported="" name="libARCommands" level="project" />
+    <orderEntry type="library" exported="" name="libARUpdater" level="project" />
     <orderEntry type="library" exported="" name="libcurl" level="project" />
     <orderEntry type="library" exported="" name="appcompat-v7-21.0.3" level="project" />
     <orderEntry type="library" exported="" name="libARMavlink" level="project" />
