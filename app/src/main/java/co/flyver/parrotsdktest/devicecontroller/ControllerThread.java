@@ -33,8 +33,8 @@ class ControllerThread extends LooperThread {
 //        sendPing();
         sendPCMD();
 
-        long sleepTime = (SystemClock.elapsedRealtime() + 50) - lastTime;
-//        long sleepTime = 1000;
+//        long sleepTime = (SystemClock.elapsedRealtime() + 50) - lastTime;
+        long sleepTime = 25;
 
         try {
             sleep(sleepTime);

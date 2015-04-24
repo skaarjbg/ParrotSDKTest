@@ -44,6 +44,7 @@ class ReaderThread extends LooperThread {
 
         if (skip == false) {
             ARCOMMANDS_DECODER_ERROR_ENUM decodeStatus = dataRecv.decode();
+//            Log.d("DECODE", dataRecv.toString());
             if ((decodeStatus != ARCOMMANDS_DECODER_ERROR_ENUM.ARCOMMANDS_DECODER_OK) && (decodeStatus != ARCOMMANDS_DECODER_ERROR_ENUM.ARCOMMANDS_DECODER_ERROR_NO_CALLBACK) && (decodeStatus != ARCOMMANDS_DECODER_ERROR_ENUM.ARCOMMANDS_DECODER_ERROR_UNKNOWN_COMMAND)) {
                 ARSALPrint.e(TAG, "ARCommand.decode() failed. " + decodeStatus);
             }

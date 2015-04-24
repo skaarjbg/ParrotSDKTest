@@ -1,11 +1,18 @@
 package co.flyver.parrotsdktest.devicecontroller;
 
-import android.bluetooth.BluetoothClass;
 import android.content.Context;
 import android.os.Build;
 import android.util.Log;
 
+import com.parrot.arsdk.arcommands.ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_ENUM;
+import com.parrot.arsdk.arcommands.ARCOMMANDS_GENERATOR_ERROR_ENUM;
 import com.parrot.arsdk.arcommands.ARCommand;
+import com.parrot.arsdk.arcommands.ARCommandARDrone3MediaRecordStatePictureStateChangedListener;
+import com.parrot.arsdk.arcommands.ARCommandARDrone3PilotingStateFlyingStateChangedListener;
+import com.parrot.arsdk.arcommands.ARCommandARDrone3PilotingStateSpeedChangedListener;
+import com.parrot.arsdk.arcommands.ARCommandCommonCommonStateAllStatesChangedListener;
+import com.parrot.arsdk.arcommands.ARCommandCommonCommonStateBatteryStateChangedListener;
+import com.parrot.arsdk.arcommands.ARCommandCommonSettingsStateAllSettingsChangedListener;
 import com.parrot.arsdk.ardiscovery.ARDISCOVERY_ERROR_ENUM;
 import com.parrot.arsdk.ardiscovery.ARDiscoveryConnection;
 import com.parrot.arsdk.ardiscovery.ARDiscoveryDeviceNetService;
@@ -20,8 +27,12 @@ import com.parrot.arsdk.arsal.ARSALPrint;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.Semaphore;
 
 import co.flyver.parrotsdktest.devicecontroller.config.ARDroneNetworkConfig;
 import co.flyver.parrotsdktest.devicecontroller.containers.PositionCommandContainer;
@@ -29,7 +40,12 @@ import co.flyver.parrotsdktest.devicecontroller.containers.PositionCommandContai
 /**
  * Created by Petar Petrov on 3/6/15.
  */
-public class DeviceController {
+public class DeviceController implements ARCommandCommonSettingsStateAllSettingsChangedListener,
+        ARCommandCommonCommonStateAllStatesChangedListener,
+        ARCommandARDrone3PilotingStateFlyingStateChangedListener,
+        ARCommandARDrone3MediaRecordStatePictureStateChangedListener,
+        ARCommandCommonCommonStateBatteryStateChangedListener,
+        ARCommandARDrone3PilotingStateSpeedChangedListener {
 
     private final static String TAG = "DeviceController";
     public final static int iobufferC2dNack = 10;
@@ -68,6 +84,15 @@ public class DeviceController {
     private int videoFragmentSize;
     private int videoFragmentNumber;
 
+    private Semaphore settingsSemaphore;
+    private Semaphore stateSemaphore;
+
+    public void setListener(Listener listener) {
+        this.listener = listener;
+    }
+
+    private Listener listener;
+
     public PositionCommandContainer getDronePosition() {
         return dronePosition;
     }
@@ -92,17 +117,47 @@ public class DeviceController {
         return netManager;
     }
 
+    @Override
+    public void onCommonCommonStateBatteryStateChangedUpdate(byte percent) {
+        Log.d(TAG, "Battery changed: " + percent);
+    }
+
+    @Override
+    public void onARDrone3MediaRecordStatePictureStateChangedUpdate(byte state, byte mass_storage_id) {
+        Log.d(TAG, "picture taken: " + state + " " + mass_storage_id);
+        listener.pictureReady();
+    }
+
+    @Override
+    public void onARDrone3PilotingStateSpeedChangedUpdate(float speedX, float speedY, float speedZ) {
+        listener.speedChanged(speedX, speedY, speedZ);
+    }
+
+
+    public interface Listener {
+        public void onDisconnect();
+        public void onUpdateBattery(final byte percent);
+        public void onFlyingStateChanged(ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_ENUM state);
+        public void pictureReady();
+        public void speedChanged(float speedX, float speedY, float speedZ);
+
+    }
+
     public DeviceController(android.content.Context context, ARDiscoveryDeviceService service) {
         dronePosition = new PositionCommandContainer();
         deviceService = service;
         this.context = context;
         readerThreads = new ArrayList<>();
+        settingsSemaphore = new Semaphore(0);
+        stateSemaphore = new Semaphore(0);
     }
 
     public boolean start() {
         Log.d(TAG, "start ...");
 
         boolean failed = false;
+
+        registerListeners();
 
         failed = startNetwork();
 
@@ -116,7 +171,19 @@ public class DeviceController {
             startLooperThread();
         }
 
-        registerStream();
+//        registerStream();
+
+        if (!failed) {
+            failed = !setTime();
+        }
+
+        if (!failed) {
+            failed = !getInitialSettings();
+        }
+
+        if (!failed) {
+            failed = !getInitialState();
+        }
 
         return failed;
     }
@@ -187,6 +254,7 @@ public class DeviceController {
             txThread.start();
         }
         Log.d(TAG, "network started: ".concat(String.valueOf(!failed)));
+
 
         return failed;
     }
@@ -263,6 +331,8 @@ public class DeviceController {
         for(ReaderThread t : readerThreads) {
            t.stopThread();
         }
+        rxThread.interrupt();
+        txThread.interrupt();
         looperThread.stopThread();
         alManager.closeWifiNetwork();
         netManager.stop();
@@ -272,5 +342,145 @@ public class DeviceController {
             throwable.printStackTrace();
         }
 //        looperThread.interrupt();
+    }
+
+    private boolean getInitialSettings() {
+
+        ARCOMMANDS_GENERATOR_ERROR_ENUM cmdError = ARCOMMANDS_GENERATOR_ERROR_ENUM.ARCOMMANDS_GENERATOR_OK;
+        boolean sentStatus = true;
+        ARCommand cmd = new ARCommand();
+        cmdError = cmd.setCommonSettingsAllSettings();
+        if (cmdError == ARCOMMANDS_GENERATOR_ERROR_ENUM.ARCOMMANDS_GENERATOR_OK)
+        {
+            /* Send data with ARNetwork */
+            // The commands sent by event should be sent to an buffer acknowledged  ; here iobufferC2dAck
+            ARNETWORK_ERROR_ENUM netError = netManager.sendData (iobufferC2dAck, cmd, null, true);
+
+            if (netError != ARNETWORK_ERROR_ENUM.ARNETWORK_OK)
+            {
+                ARSALPrint.e(TAG, "netManager.sendData() failed. " + netError.toString());
+                sentStatus = false;
+            }
+
+            cmd.dispose();
+        }
+
+        if (!sentStatus)
+        {
+            ARSALPrint.e(TAG, "Failed to send AllSettings command.");
+        }
+        else
+        {
+            try
+            {
+                settingsSemaphore.acquire();
+            }
+            catch (InterruptedException e)
+            {
+                e.printStackTrace();
+                sentStatus = false;
+            }
+        }
+        return sentStatus;
+
+    }
+
+    private boolean getInitialState() {
+
+        ARCOMMANDS_GENERATOR_ERROR_ENUM cmdError = ARCOMMANDS_GENERATOR_ERROR_ENUM.ARCOMMANDS_GENERATOR_OK;
+        boolean sentStatus = true;
+        ARCommand cmd = new ARCommand();
+
+        cmdError = cmd.setCommonCommonAllStates();
+        if (cmdError == ARCOMMANDS_GENERATOR_ERROR_ENUM.ARCOMMANDS_GENERATOR_OK) {
+            /* Send data with ARNetwork */
+            // The commands sent by event should be sent to an buffer acknowledged  ; here iobufferC2dAck
+            ARNETWORK_ERROR_ENUM netError = netManager.sendData(iobufferC2dAck, cmd, null, true);
+
+            if (netError != ARNETWORK_ERROR_ENUM.ARNETWORK_OK) {
+                ARSALPrint.e(TAG, "netManager.sendData() failed. " + netError.toString());
+                sentStatus = false;
+            }
+
+            cmd.dispose();
+        }
+
+        if (!sentStatus) {
+            ARSALPrint.e(TAG, "Failed to send AllStates command.");
+        } else {
+            try {
+                stateSemaphore.acquire();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                sentStatus = false;
+            }
+        }
+        return sentStatus;
+    }
+
+    private boolean setTime() {
+        boolean failed = true;
+
+        ARCommand cmd = new ARCommand();
+        String dateFormatted = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
+        Log.d(TAG, dateFormatted);
+        cmd.setCommonCommonCurrentDate(dateFormatted);
+        failed = sendARCommand(cmd);
+        cmd.dispose();
+
+        cmd = new ARCommand();
+        String formatted = new SimpleDateFormat("'T'HHmmssZZZ", Locale.getDefault()).format(new Date());
+//            formatted = formatted.substring(0, 22) + ":" + formatted.substring(22);
+        Log.d(TAG, formatted);
+        cmd.setCommonCommonCurrentTime(formatted);
+        failed = sendARCommand(cmd);
+        cmd.dispose();
+        return failed;
+    }
+
+    public void takeOff() {
+
+    }
+
+    public void land() {
+
+    }
+
+    public void ascend() {
+
+    }
+
+    public void descend() {
+
+    }
+
+    private boolean sendARCommand(ARCommand command) {
+        ARNETWORK_ERROR_ENUM error_enum;
+        error_enum = netManager.sendData(DeviceController.iobufferC2dNack, command, null, true);
+        command.dispose();
+        return error_enum == ARNETWORK_ERROR_ENUM.ARNETWORK_OK;
+    }
+
+    private void registerListeners() {
+        ARCommand.setCommonSettingsStateAllSettingsChangedListener(this);
+        ARCommand.setCommonCommonStateAllStatesChangedListener(this);
+        ARCommand.setARDrone3MediaRecordStatePictureStateChangedListener(this);
+        ARCommand.setCommonCommonStateBatteryStateChangedListener(this);
+        ARCommand.setARDrone3PilotingStateSpeedChangedListener(this);
+    }
+
+    @Override
+    public void onCommonCommonStateAllStatesChangedUpdate() {
+        settingsSemaphore.release();
+    }
+
+    @Override
+    public void onCommonSettingsStateAllSettingsChangedUpdate() {
+        settingsSemaphore.release();
+    }
+
+    @Override
+    public void onARDrone3PilotingStateFlyingStateChangedUpdate(ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_ENUM state) {
+        Log.d(TAG, "Flying state changed");
     }
 }
